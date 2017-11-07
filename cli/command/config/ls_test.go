@@ -6,14 +6,14 @@ import (
 	"time"
 
 	"github.com/docker/cli/cli/config/configfile"
-	"github.com/docker/cli/cli/internal/test"
+	"github.com/docker/cli/internal/test"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/pkg/errors"
 	// Import builders to get the builder function as package function
-	. "github.com/docker/cli/cli/internal/test/builders"
-	"github.com/docker/docker/pkg/testutil"
-	"github.com/docker/docker/pkg/testutil/golden"
+	. "github.com/docker/cli/internal/test/builders"
+	"github.com/docker/cli/internal/test/testutil"
+	"github.com/gotestyourself/gotestyourself/golden"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -50,14 +50,20 @@ func TestConfigList(t *testing.T) {
 	cli := test.NewFakeCli(&fakeClient{
 		configListFunc: func(options types.ConfigListOptions) ([]swarm.Config, error) {
 			return []swarm.Config{
-				*Config(ConfigID("ID-foo"),
-					ConfigName("foo"),
+				*Config(ConfigID("ID-1-foo"),
+					ConfigName("1-foo"),
 					ConfigVersion(swarm.Version{Index: 10}),
 					ConfigCreatedAt(time.Now().Add(-2*time.Hour)),
 					ConfigUpdatedAt(time.Now().Add(-1*time.Hour)),
 				),
-				*Config(ConfigID("ID-bar"),
-					ConfigName("bar"),
+				*Config(ConfigID("ID-10-foo"),
+					ConfigName("10-foo"),
+					ConfigVersion(swarm.Version{Index: 11}),
+					ConfigCreatedAt(time.Now().Add(-2*time.Hour)),
+					ConfigUpdatedAt(time.Now().Add(-1*time.Hour)),
+				),
+				*Config(ConfigID("ID-2-foo"),
+					ConfigName("2-foo"),
 					ConfigVersion(swarm.Version{Index: 11}),
 					ConfigCreatedAt(time.Now().Add(-2*time.Hour)),
 					ConfigUpdatedAt(time.Now().Add(-1*time.Hour)),
@@ -66,11 +72,8 @@ func TestConfigList(t *testing.T) {
 		},
 	})
 	cmd := newConfigListCommand(cli)
-	cmd.SetOutput(cli.OutBuffer())
 	assert.NoError(t, cmd.Execute())
-	actual := cli.OutBuffer().String()
-	expected := golden.Get(t, []byte(actual), "config-list.golden")
-	testutil.EqualNormalizedString(t, testutil.RemoveSpace, actual, string(expected))
+	golden.Assert(t, cli.OutBuffer().String(), "config-list-sort.golden")
 }
 
 func TestConfigListWithQuietOption(t *testing.T) {
@@ -87,9 +90,7 @@ func TestConfigListWithQuietOption(t *testing.T) {
 	cmd := newConfigListCommand(cli)
 	cmd.Flags().Set("quiet", "true")
 	assert.NoError(t, cmd.Execute())
-	actual := cli.OutBuffer().String()
-	expected := golden.Get(t, []byte(actual), "config-list-with-quiet-option.golden")
-	testutil.EqualNormalizedString(t, testutil.RemoveSpace, actual, string(expected))
+	golden.Assert(t, cli.OutBuffer().String(), "config-list-with-quiet-option.golden")
 }
 
 func TestConfigListWithConfigFormat(t *testing.T) {
@@ -108,9 +109,7 @@ func TestConfigListWithConfigFormat(t *testing.T) {
 	})
 	cmd := newConfigListCommand(cli)
 	assert.NoError(t, cmd.Execute())
-	actual := cli.OutBuffer().String()
-	expected := golden.Get(t, []byte(actual), "config-list-with-config-format.golden")
-	testutil.EqualNormalizedString(t, testutil.RemoveSpace, actual, string(expected))
+	golden.Assert(t, cli.OutBuffer().String(), "config-list-with-config-format.golden")
 }
 
 func TestConfigListWithFormat(t *testing.T) {
@@ -127,9 +126,7 @@ func TestConfigListWithFormat(t *testing.T) {
 	cmd := newConfigListCommand(cli)
 	cmd.Flags().Set("format", "{{ .Name }} {{ .Labels }}")
 	assert.NoError(t, cmd.Execute())
-	actual := cli.OutBuffer().String()
-	expected := golden.Get(t, []byte(actual), "config-list-with-format.golden")
-	testutil.EqualNormalizedString(t, testutil.RemoveSpace, actual, string(expected))
+	golden.Assert(t, cli.OutBuffer().String(), "config-list-with-format.golden")
 }
 
 func TestConfigListWithFilter(t *testing.T) {
@@ -157,7 +154,5 @@ func TestConfigListWithFilter(t *testing.T) {
 	cmd.Flags().Set("filter", "name=foo")
 	cmd.Flags().Set("filter", "label=lbl1=Label-bar")
 	assert.NoError(t, cmd.Execute())
-	actual := cli.OutBuffer().String()
-	expected := golden.Get(t, []byte(actual), "config-list-with-filter.golden")
-	testutil.EqualNormalizedString(t, testutil.RemoveSpace, actual, string(expected))
+	golden.Assert(t, cli.OutBuffer().String(), "config-list-with-filter.golden")
 }

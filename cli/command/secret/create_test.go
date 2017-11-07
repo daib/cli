@@ -1,18 +1,17 @@
 package secret
 
 import (
-	"bytes"
 	"io/ioutil"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
-	"github.com/docker/cli/cli/internal/test"
+	"github.com/docker/cli/internal/test"
+	"github.com/docker/cli/internal/test/testutil"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/swarm"
-	"github.com/docker/docker/pkg/testutil"
-	"github.com/docker/docker/pkg/testutil/golden"
+	"github.com/gotestyourself/gotestyourself/golden"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
@@ -25,12 +24,11 @@ func TestSecretCreateErrors(t *testing.T) {
 		secretCreateFunc func(swarm.SecretSpec) (types.SecretCreateResponse, error)
 		expectedError    string
 	}{
-		{
-			args:          []string{"too_few"},
-			expectedError: "requires exactly 2 argument(s)",
-		},
 		{args: []string{"too", "many", "arguments"},
-			expectedError: "requires exactly 2 argument(s)",
+			expectedError: "requires at least 1 and at most 2 arguments",
+		},
+		{args: []string{"create", "--driver", "driver", "-"},
+			expectedError: "secret data must be empty",
 		},
 		{
 			args: []string{"name", filepath.Join("testdata", secretDataFile)},
@@ -54,9 +52,8 @@ func TestSecretCreateErrors(t *testing.T) {
 
 func TestSecretCreateWithName(t *testing.T) {
 	name := "foo"
-	buf := new(bytes.Buffer)
 	var actual []byte
-	cli := test.NewFakeCliWithOutput(&fakeClient{
+	cli := test.NewFakeCli(&fakeClient{
 		secretCreateFunc: func(spec swarm.SecretSpec) (types.SecretCreateResponse, error) {
 			if spec.Name != name {
 				return types.SecretCreateResponse{}, errors.Errorf("expected name %q, got %q", name, spec.Name)
@@ -68,14 +65,42 @@ func TestSecretCreateWithName(t *testing.T) {
 				ID: "ID-" + spec.Name,
 			}, nil
 		},
-	}, buf)
+	})
 
 	cmd := newSecretCreateCommand(cli)
 	cmd.SetArgs([]string{name, filepath.Join("testdata", secretDataFile)})
 	assert.NoError(t, cmd.Execute())
-	expected := golden.Get(t, actual, secretDataFile)
-	assert.Equal(t, expected, actual)
-	assert.Equal(t, "ID-"+name, strings.TrimSpace(buf.String()))
+	golden.Assert(t, string(actual), secretDataFile)
+	assert.Equal(t, "ID-"+name, strings.TrimSpace(cli.OutBuffer().String()))
+}
+
+func TestSecretCreateWithDriver(t *testing.T) {
+	expectedDriver := &swarm.Driver{
+		Name: "secret-driver",
+	}
+	name := "foo"
+
+	cli := test.NewFakeCli(&fakeClient{
+		secretCreateFunc: func(spec swarm.SecretSpec) (types.SecretCreateResponse, error) {
+			if spec.Name != name {
+				return types.SecretCreateResponse{}, errors.Errorf("expected name %q, got %q", name, spec.Name)
+			}
+
+			if !reflect.DeepEqual(spec.Driver.Name, expectedDriver.Name) {
+				return types.SecretCreateResponse{}, errors.Errorf("expected driver %v, got %v", expectedDriver, spec.Labels)
+			}
+
+			return types.SecretCreateResponse{
+				ID: "ID-" + spec.Name,
+			}, nil
+		},
+	})
+
+	cmd := newSecretCreateCommand(cli)
+	cmd.SetArgs([]string{name})
+	cmd.Flags().Set("driver", expectedDriver.Name)
+	assert.NoError(t, cmd.Execute())
+	assert.Equal(t, "ID-"+name, strings.TrimSpace(cli.OutBuffer().String()))
 }
 
 func TestSecretCreateWithLabels(t *testing.T) {
@@ -85,8 +110,7 @@ func TestSecretCreateWithLabels(t *testing.T) {
 	}
 	name := "foo"
 
-	buf := new(bytes.Buffer)
-	cli := test.NewFakeCliWithOutput(&fakeClient{
+	cli := test.NewFakeCli(&fakeClient{
 		secretCreateFunc: func(spec swarm.SecretSpec) (types.SecretCreateResponse, error) {
 			if spec.Name != name {
 				return types.SecretCreateResponse{}, errors.Errorf("expected name %q, got %q", name, spec.Name)
@@ -100,12 +124,12 @@ func TestSecretCreateWithLabels(t *testing.T) {
 				ID: "ID-" + spec.Name,
 			}, nil
 		},
-	}, buf)
+	})
 
 	cmd := newSecretCreateCommand(cli)
 	cmd.SetArgs([]string{name, filepath.Join("testdata", secretDataFile)})
 	cmd.Flags().Set("label", "lbl1=Label-foo")
 	cmd.Flags().Set("label", "lbl2=Label-bar")
 	assert.NoError(t, cmd.Execute())
-	assert.Equal(t, "ID-"+name, strings.TrimSpace(buf.String()))
+	assert.Equal(t, "ID-"+name, strings.TrimSpace(cli.OutBuffer().String()))
 }

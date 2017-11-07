@@ -8,13 +8,14 @@ import (
 
 	"github.com/docker/cli/cli"
 	"github.com/docker/cli/cli/command"
+	"github.com/docker/cli/opts"
 	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/pkg/promise"
 	"github.com/docker/docker/pkg/signal"
 	"github.com/docker/docker/pkg/term"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"golang.org/x/net/context"
+	"github.com/spf13/pflag"
 )
 
 type startOptions struct {
@@ -25,11 +26,14 @@ type startOptions struct {
 	checkpointDir string
 
 	containers []string
+	portmap		  opts.ListOpts
 }
 
 // NewStartCommand creates a new cobra.Command for `docker start`
 func NewStartCommand(dockerCli *command.DockerCli) *cobra.Command {
-	var opts startOptions
+	opts := &startOptions{
+		portmap: opts.NewListOpts(nil),
+	}
 
 	cmd := &cobra.Command{
 		Use:   "start [OPTIONS] CONTAINER [CONTAINER...]",
@@ -37,11 +41,12 @@ func NewStartCommand(dockerCli *command.DockerCli) *cobra.Command {
 		Args:  cli.RequiresMinArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.containers = args
-			return runStart(dockerCli, &opts)
+			return runStart(dockerCli, opts, cmd.Flags())
 		},
 	}
 
 	flags := cmd.Flags()
+	flags.VarP(&opts.portmap, "portmap", "p", "Publish a container's port(s) to the host")
 	flags.BoolVarP(&opts.attach, "attach", "a", false, "Attach STDOUT/STDERR and forward signals")
 	flags.BoolVarP(&opts.openStdin, "interactive", "i", false, "Attach container's STDIN")
 	flags.StringVar(&opts.detachKeys, "detach-keys", "", "Override the key sequence for detaching a container")
@@ -54,7 +59,7 @@ func NewStartCommand(dockerCli *command.DockerCli) *cobra.Command {
 }
 
 // nolint: gocyclo
-func runStart(dockerCli *command.DockerCli, opts *startOptions) error {
+func runStart(dockerCli *command.DockerCli, opts *startOptions, flags *pflag.FlagSet) error {
 	ctx, cancelFun := context.WithCancel(context.Background())
 
 	if opts.attach || opts.openStdin {
@@ -103,23 +108,28 @@ func runStart(dockerCli *command.DockerCli, opts *startOptions) error {
 			return errAttach
 		}
 		defer resp.Close()
-		cErr := promise.Go(func() error {
-			streamer := hijackedIOStreamer{
-				streams:      dockerCli,
-				inputStream:  in,
-				outputStream: dockerCli.Out(),
-				errorStream:  dockerCli.Err(),
-				resp:         resp,
-				tty:          c.Config.Tty,
-				detachKeys:   options.DetachKeys,
-			}
 
-			errHijack := streamer.stream(ctx)
-			if errHijack == nil {
-				return errAttach
-			}
-			return errHijack
-		})
+		cErr := make(chan error, 1)
+
+		go func() {
+			cErr <- func() error {
+				streamer := hijackedIOStreamer{
+					streams:      dockerCli,
+					inputStream:  in,
+					outputStream: dockerCli.Out(),
+					errorStream:  dockerCli.Err(),
+					resp:         resp,
+					tty:          c.Config.Tty,
+					detachKeys:   options.DetachKeys,
+				}
+
+				errHijack := streamer.stream(ctx)
+				if errHijack == nil {
+					return errAttach
+				}
+				return errHijack
+			}()
+		}()
 
 		// 3. We should open a channel for receiving status code of the container
 		// no matter it's detached, removed on daemon side(--rm) or exit normally.
@@ -127,6 +137,7 @@ func runStart(dockerCli *command.DockerCli, opts *startOptions) error {
 		startOptions := types.ContainerStartOptions{
 			CheckpointID:  opts.checkpoint,
 			CheckpointDir: opts.checkpointDir,
+			Portmap:  opts.portmap.GetAll(),
 		}
 
 		// 4. Start the container.
@@ -165,6 +176,7 @@ func runStart(dockerCli *command.DockerCli, opts *startOptions) error {
 		startOptions := types.ContainerStartOptions{
 			CheckpointID:  opts.checkpoint,
 			CheckpointDir: opts.checkpointDir,
+			Portmap: opts.portmap.GetAll(),
 		}
 		return dockerCli.Client().ContainerStart(ctx, container, startOptions)
 

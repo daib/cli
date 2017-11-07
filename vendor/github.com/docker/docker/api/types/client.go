@@ -91,6 +91,7 @@ type ContainerRemoveOptions struct {
 type ContainerStartOptions struct {
 	CheckpointID  string
 	CheckpointDir string
+	Portmap 	  []string
 }
 
 // CopyToContainerOptions holds information
@@ -181,7 +182,7 @@ type ImageBuildOptions struct {
 	SessionID   string
 
 	// TODO @jhowardmsft LCOW Support: This will require extending to include
-	// `Platform string`, but is ommited for now as it's hard-coded temporarily
+	// `Platform string`, but is omitted for now as it's hard-coded temporarily
 	// to avoid API changes.
 }
 

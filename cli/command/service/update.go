@@ -22,7 +22,7 @@ import (
 	"golang.org/x/net/context"
 )
 
-func newUpdateCommand(dockerCli *command.DockerCli) *cobra.Command {
+func newUpdateCommand(dockerCli command.Cli) *cobra.Command {
 	options := newServiceOptions()
 
 	cmd := &cobra.Command{
@@ -103,7 +103,7 @@ func newListOptsVar() *opts.ListOpts {
 }
 
 // nolint: gocyclo
-func runUpdate(dockerCli *command.DockerCli, flags *pflag.FlagSet, options *serviceOptions, serviceID string) error {
+func runUpdate(dockerCli command.Cli, flags *pflag.FlagSet, options *serviceOptions, serviceID string) error {
 	apiClient := dockerCli.Client()
 	ctx := context.Background()
 
@@ -216,8 +216,7 @@ func runUpdate(dockerCli *command.DockerCli, flags *pflag.FlagSet, options *serv
 
 	fmt.Fprintf(dockerCli.Out(), "%s\n", serviceID)
 
-	if options.detach {
-		warnDetachDefault(dockerCli.Err(), dockerCli.Client().ClientVersion(), flags, "updated")
+	if options.detach || versions.LessThan(apiClient.ClientVersion(), "1.29") {
 		return nil
 	}
 
@@ -270,7 +269,7 @@ func updateService(ctx context.Context, apiClient client.NetworkAPIClient, flags
 		}
 	}
 
-	cspec := &spec.TaskTemplate.ContainerSpec
+	cspec := spec.TaskTemplate.ContainerSpec
 	task := &spec.TaskTemplate
 
 	taskResources := func() *swarm.ResourceRequirements {

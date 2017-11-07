@@ -12,7 +12,7 @@ import (
 	"golang.org/x/net/context"
 )
 
-func newCreateCommand(dockerCli *command.DockerCli) *cobra.Command {
+func newCreateCommand(dockerCli command.Cli) *cobra.Command {
 	opts := newServiceOptions()
 
 	cmd := &cobra.Command{
@@ -62,7 +62,7 @@ func newCreateCommand(dockerCli *command.DockerCli) *cobra.Command {
 	return cmd
 }
 
-func runCreate(dockerCli *command.DockerCli, flags *pflag.FlagSet, opts *serviceOptions) error {
+func runCreate(dockerCli command.Cli, flags *pflag.FlagSet, opts *serviceOptions) error {
 	apiClient := dockerCli.Client()
 	createOpts := types.ServiceCreateOptions{}
 
@@ -123,8 +123,7 @@ func runCreate(dockerCli *command.DockerCli, flags *pflag.FlagSet, opts *service
 
 	fmt.Fprintf(dockerCli.Out(), "%s\n", response.ID)
 
-	if opts.detach {
-		warnDetachDefault(dockerCli.Err(), apiClient.ClientVersion(), flags, "created")
+	if opts.detach || versions.LessThan(apiClient.ClientVersion(), "1.29") {
 		return nil
 	}
 
